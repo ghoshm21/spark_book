@@ -1,2 +1,2 @@
-# spark_book
-book pdf and codes
+# spark_ebook
+The pdf version of the working book and all the codes
