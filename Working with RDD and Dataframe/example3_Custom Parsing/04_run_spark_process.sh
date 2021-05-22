@@ -14,3 +14,11 @@ echo "Starting sprk process"
 spark-submit ./03_custom_parsing_spark.py
 duration=$SECONDS
 echo "$(($duration / 60)) minutes and $(($duration % 60)) seconds elapsed."
+
+
+SECONDS=0
+echo "Starting sprk process"
+export PYSPARK_PYTHON=python3
+$SPARK_HOME/bin/spark-submit --master spark://LAPTOP-7DUT93OF.localdomain:7077 --executor-memory 6700mb ./python_udf_example.py
+duration=$SECONDS
+echo "$(($duration / 60)) minutes and $(($duration % 60)) seconds elapsed."
