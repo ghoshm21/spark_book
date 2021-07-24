@@ -32,7 +32,7 @@ addess = Address()
 bus = Business()
 datetime = Datetime()
 
-file_dir = '/home/sandipan/Training_Data/spark_test_data_new'
+file_dir = '/mnt/tv/spark_test_data_new'
 cust_no = 1000000
 cust_loop = 100
 order_loop = 30
@@ -255,5 +255,17 @@ for i in range(product_loop_outer):
     ord_5.unpersist()
 
 
-
 print("All Done")
+
+# code to generate the skew order id, few customer gave a lot of orders
+# picking up few customer ids to generate the skew and write to a csv file in local file system
+order_date = '2021-01-01'
+skw_cust = [307643218223138015641709187086459060914, 308866526326142099064477198020167058098, 300027649736679849154714606614789472946, 310487679122580535944057215461750981298]
+# cust = str(307643218223138015641709187086459060914)
+for cust in skw_cust:
+    order_df = spark.range(200000000).withColumn("cust_id", lit(str(cust))).withColumn("order_date", lit(order_date))
+    order_rdd = order_df.rdd.map(lambda x: skew_orders_generator(x[1],x[2]))
+    order_df_final = order_rdd.toDF(schema=order_df_schema)
+    order_df_final.write.option("compression","gzip").save(path=file_dir+'/'+str(cust)+'_order_skew', format='csv', mode='append', sep='|')
+    print("Order generated for %s" %cust)
+
