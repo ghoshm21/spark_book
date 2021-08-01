@@ -111,7 +111,7 @@ left outer join product as prod
 """)
 # ----------------------- approach 1 ----------------------------------------------------------
 # insert into merge data to hive final table with out repartitons
-# this iwill create a lot of small files(=number of shuffle partitions) under every partition
+# this iwill create a lot of small files(number of files=number of shuffle partitions) under every partition
 '''spark.sql("""insert overwrite table CUSTOMER_ORDERS_PRODUCT partition(order_date)
 select 
     row_id,
@@ -143,7 +143,7 @@ from merge_data_df""")'''
 # ----------------------- approach 2 ----------------------------------------------------------
 # to create single file par partition we need to use repartition
 # if we have skewed data then this will be very slow and might fail
-# I am uusing the file dir for writing the data, writing to hive table can be same just like TEST 1
+# I am using the file dir for writing the data, writing to hive table can be same just like TEST 1
 # set dynamic partitions
 spark.conf.set("hive.exec.dynamic.partition", "true")
 spark.conf.set("hive.exec.dynamic.partition.mode", "nonstrict")

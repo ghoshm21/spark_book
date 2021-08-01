@@ -4,7 +4,9 @@ from pyspark.sql.types import *
 
 # https://ghoshm21.medium.com/spark-write-single-file-per-hive-partitions-3d0ee1559a80
 '''
-Use this code to follow step by step - optimizing the skew data
+In this code I showed how to work with skewed data.
+1. How to split the data and conqure
+2. Other 
 
 '''
 
@@ -39,6 +41,7 @@ order_product_df_schema = "`order_id` STRING, \
         `quantity` INT"
 
 # read from files
+# orders = spark.read.format('orc').schema(order_df_schema).load(file_dir+'/orders_skw_orc/*.orc')
 orders = spark.read.format('orc').schema(order_df_schema).load(file_dir+'/orders_orc/*.orc')
 product = spark.read.format('csv').option('delimiter', '|').option('header', 'true').load(file_dir+'/product/*.csv').cache()
 customer = spark.read.format('orc').schema(customer_df_schema).load(file_dir+'/customer_orc/*.orc')
@@ -53,25 +56,26 @@ customer.createOrReplaceTempView("customer")
 # merge data is created with the bellow SQL.
 # Lets check all the joining column for the skew ness
 spark.sql("select cust_id, count(1) as rec_count from customer group by cust_id order by count(1) desc").show(5,False)
-+-------------------------------------+---------+
-|cust_id                              |rec_count|
-+-------------------------------------+---------+
-|6379354496207788799770000334416757426|1        |
-|6379373035597817137624997223701136050|1        |
-|6379391812672333018273006893617365682|1        |
-|6379397517100034045305313628781789874|1        |
-|6379399814716746958971103841556349618|1        |
-+-------------------------------------+---------+
++---------------------------------------+---------+
+|cust_id                                |rec_count|
++---------------------------------------+---------+
+|331990751321662984916119431657624421042|1        |
+|331990761542095949256218981224794014386|1        |
+|331990767563436300340308638334134239922|1        |
+|331990772475582376224697569133859160754|1        |
+|331990800205439256217215726874241778354|1        |
++---------------------------------------+---------+
 spark.sql("select cust_id, count(1) as rec_count from orders group by cust_id order by count(1) desc").show(5,False)
 +---------------------------------------+---------+
 |cust_id                                |rec_count|
 +---------------------------------------+---------+
-|221175601294661197258047859365864784562|18       |
-|42659854088193970008207597703680737970 |17       |
-|132461578677588917106957668115681624754|17       |
-|235992096807546922312654577286071435954|16       |
-|129602292762831843764452715230596940466|16       |
+|46140677648871197582688745161315566258 |23       |
+|254293191103066977821570918218611278514|23       |
+|256346305982744030324735983239333921458|23       |
+|32418570489867457558547660609317749426 |23       |
+|301886283562739742416256315686516933298|22       |
 +---------------------------------------+---------+
+
 spark.sql("select order_id, count(1) as rec_count from orders group by order_id order by count(1) desc").show(5,False)
 +------------------------------------+---------+
 |order_id                            |rec_count|
@@ -123,7 +127,8 @@ from orders group by cast(orders.order_date as date) order by count(1) desc""").
 |2021-02-24|358530   |
 +----------+---------+
 
-
+# -----------------------------------------------------------------------------------------
+# make the df after joining all tables
 merge_data_df = spark.sql("""select
 cust.full_name ,
 cust.name ,
@@ -156,3 +161,34 @@ left outer join orders_product as ordp
 left outer join product as prod
     on prod.uniq_id = ordp.uniq_id
 """)
+# ----------------------- split the data approach ----------------------------------------------------------
+# To solve the slow skew data problem we can split the insert part in 2 parts.
+# 1st part -> insert only non skew data, in this case non 2020-01-01 data
+# 2nd part -> insert only skew data, in this case 2020-01-01 data 
+# I am writing the merge data to disk first, so spark dont have to run this sql 2 times.
+# # If you have big cluster you can cache the data in memory. Keep in mind that this will take a lot of memory and can have 
+# negative impact on cluster performace.
+# merge_data.hint("skew", "order_date") -- this does not work with reguler spark
+# merge_data_df.createOrReplaceTempView("merge_data_df")
+spark.conf.set("spark.sql.files.maxPartitionBytes", 100000000)
+spark.conf.set("spark.sql.shuffle.partitions", 1200)
+# write the merge data to disk
+merge_data_df.write.option("orc.compress", "snappy").save(path=file_dir+'/merge_data', format='orc', mode='overwrite')
+# split 1 - non skewed data
+# read the merge_data and filter for non skwed data and skwed data
+merge_data_df = spark.read.orc(file_dir+'/merge_data/*.orc').filter("order_date <> '2020-01-01'")
+# set dynamic partitions ON
+spark.conf.set("hive.exec.dynamic.partition", "true")
+spark.conf.set("hive.exec.dynamic.partition.mode", "nonstrict")
+merge_data_df_parti = merge_data_df.repartition("order_date")
+spark.conf.set("spark.sql.files.maxPartitionBytes", 100000000)
+spark.conf.set("spark.sql.shuffle.partitions", 800)
+# write the non skewed data part by partitioning the data on partition column
+merge_data_df_parti.write.partitionBy("order_date").option("orc.compress", "snappy").save(path=file_dir+'/custmoer_orders_product_3', format='orc', mode='overwrite')
+# split 2 - write the skew data. No need for repartition as the data is only for one order date
+merge_data_skw = spark.read.orc(file_dir+'/merge_data/*.orc').filter("order_date = '2020-01-01'")
+# cache it and the run count to force spark to run the prcess in parallel using shuffle.partitions number of tasks
+# Else this will only use the number of coalesce task, in this case only 1
+merge_data_skw.cache()
+merge_data_skw.count()
+merge_data_skw.coalesce(20).write.partitionBy("order_date").option("orc.compress", "snappy").save(path=file_dir+'/custmoer_orders_product_3', format='orc', mode='append')
