@@ -10,6 +10,7 @@ secret_key = "xxxxxx"
 encoded_secret_key = urllib.parse.quote(secret_key).replace("/", "%2F")
 aws_bucket_name = "sandipan-atena"
 local_mount_name = "corona_s3"
+# using s3a -> as the file size is large, plase use s3n is the file size is small
 dbutils.fs.mount("s3a://%s:%s@%s" %(access_key, encoded_secret_key, aws_bucket_name), "/mnt/%s" %local_mount_name)
 
 # get the file details
