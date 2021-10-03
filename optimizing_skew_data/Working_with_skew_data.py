@@ -245,4 +245,7 @@ left outer join product as prod
 spark.conf.set("spark.sql.files.maxPartitionBytes", 100000000)
 spark.conf.set("spark.sql.shuffle.partitions", 1800)
 # write the merge data to disk
+# The spark prop is true by default
+# spark.conf.set("spark.shuffle.compress", "true")
+# spark.conf.set("spark.shuffle.spill.compress", "true")
 merge_data_df.write.option("orc.compress", "snappy").save(path=file_dir+'/merge_data_skew', format='orc', mode='overwrite')
