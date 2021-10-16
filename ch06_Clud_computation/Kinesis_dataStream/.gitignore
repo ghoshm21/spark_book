@@ -1,2 +1,2 @@
 settings.py
-.gitignore
+*.gitignore
